@@ -11,7 +11,7 @@ parameters {
 }
 
 model {
-  real mu = 0;
+  real mu = 0.0;
   vector[N] muv = rep_vector(mu, N);
   matrix[N, N] Sigma = cov_exp_quad(x, sigma, l);
     

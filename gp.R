@@ -8,7 +8,7 @@ N = 100
 M = 10
 scale = 0.25
 x = seq(-0.5, 0.5, length = N)
-y = rnorm(N) * 0.025 + 0.5 + x
+y = rnorm(N) * 0.025 + 0.5  + x^2
 
 plot(x, y)
 
