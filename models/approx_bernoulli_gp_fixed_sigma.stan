@@ -68,6 +68,6 @@ generated quantities {
   {
     matrix[P, M] L = approx_L(M, scale, xp, sigma, l);
     
-    log10error = max(fabs(cov_exp_quad(xp, sigma, l) - L * L'));
+    log10error = log10(max(fabs(cov_exp_quad(xp, sigma, l) - L * L')));
   }
 }
