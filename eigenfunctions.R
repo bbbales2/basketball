@@ -1,6 +1,7 @@
 library(tidyverse)
 library(rstan)
 library(ggplot2)
+library(reshape2)
 
 approx_L = function(M, scale, x, sigma, l) {
   epsilon = sqrt(1 / (2 * l^2))
@@ -27,7 +28,7 @@ cov_exp_quad = function(x, sigma, l) {
 
 N = 50
 M = 10
-x = seq(-0.5, 0.5, length = N)
+x = seq(-1.5, 1.5, length = N)
 l = 0.25
 sigma = 1.0
 
@@ -37,9 +38,25 @@ gete = function(scale) {
   max(log10(abs(L %*% t(L) - cov_exp_quad(x, sigma, l))))
 }
 
+# You can make plots of error four different scale parameters
 scales = seq(0.1, 1.0, length = 100)
 plot(scales, lapply(scales, gete))
 
+# Or maybe just compare matrices
+L = approx_L(M, 0.25, x, sigma, l)
+LLT = L %*% t(L)
+dimnames(LLT) = list(x, x)
+K = cov_exp_quad(x, sigma, l)
+dimnames(K) = list(x, x)
+bind_rows(LLT %>% melt %>% mutate(which = "approximate"),
+          K %>% melt %>% mutate(which = "exact")) %>%
+  rename(x1 = Var1, x2 = Var2) %>%
+  ggplot(aes(x1, x2, fill = value)) +
+  geom_tile() +
+  facet_grid(. ~ which) +
+  coord_equal()
+
+# Or maybe just plot some eigenfunctions
 L = approx_L(M, 0.17, x, sigma, l)
 bind_cols(as_tibble(L), as_tibble(x)) %>% rename(x = value) %>%
   gather(basis, value, 1:M) %>% ggplot(aes(x, value)) +
