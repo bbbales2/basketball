@@ -15,8 +15,8 @@ df = csv %>% filter(event_type == "shot" | event_type == "miss") %>%
   filter(period < 5) %>%
   mutate(elapsed = as.duration(elapsed) / 60.0 + (period - 1) * 12) %>%
   ungroup() %>%
-  select(result, period, elapsed, points) %>%
+  select(result, period, elapsed) %>%
   mutate(x = elapsed / 48.0 - 0.5)
 
-write_csv(df, "rw.csv")
+write_csv(df, "data/rw.csv")
 

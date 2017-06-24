@@ -5,7 +5,7 @@ library(shinystan)
 
 setwd("~/basketball")
 
-df = read_csv('rw.csv')# %>% sample_n(1000)
+df = read_csv('data/rw_nba.csv')# %>% sample_n(1000)
 
 sdata = list(N = nrow(df),
              M = 10,
@@ -16,13 +16,17 @@ sdata = list(N = nrow(df),
 
 fit = stan('models/approx_bernoulli_gp_fixed_sigma.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
 
-#launch_shinystan(fit)
+extract(fit, c("l", "log10error")) %>% as_tibble %>% gather(param, value, c("l", "log10error")) %>%
+  ggplot(aes(value)) +
+  geom_histogram() +
+  facet_grid(. ~ param, scales = "free_x")
 
 sdata = list(N = nrow(df),
              x = df$period,
              y = df$result)
 
 fit_grouped = stan('models/bernoulli_grouped.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
+
 
 a = as_tibble(extract(fit, "f")$f)
 colnames(a) = 1:ncol(a)
@@ -49,17 +53,17 @@ summary_grouped = out_grouped %>% group_by(time) %>%
   ungroup()
 
 summary %>% ggplot(aes(time, mean)) +
-  geom_ribbon(aes(ymin = q1, ymax = q2), alpha = 0.125, fill = "blue") +
-  geom_ribbon(aes(ymin = q2, ymax = q3), alpha = 0.25, fill = "orange") +
-  geom_ribbon(aes(ymin = q3, ymax = q4), alpha = 0.125, fill = "blue") +
+  geom_ribbon(aes(ymin = q1, ymax = q2), alpha = 0.75, fill = "dodgerblue2") +
+  geom_ribbon(aes(ymin = q2, ymax = q3), alpha = 0.75, fill = "orangered1") +
+  geom_ribbon(aes(ymin = q3, ymax = q4), alpha = 0.75, fill = "dodgerblue2") +
   geom_line() +
-  geom_line(aes(time, q1), alpha = 1.0, size = 0.25) +
-  geom_line(aes(time, q2), alpha = 1.0, size = 0.25) +
-  geom_line(aes(time, q3), alpha = 1.0, size = 0.25) +
-  geom_line(aes(time, q4), alpha = 1.0, size = 0.25) +
+  geom_line(aes(time, q1), alpha = 1.0, size = 0.125) +
+  geom_line(aes(time, q2), alpha = 1.0, size = 0.125) +
+  geom_line(aes(time, q3), alpha = 1.0, size = 0.125) +
+  geom_line(aes(time, q4), alpha = 1.0, size = 0.125) +
   #geom_point(data = out2, aes(time, f), size = 0.1, alpha = 0.01) +
   #geom_boxplot(data = summary2, aes(time, f, group = time)) +
-  geom_errorbar(data = summary_grouped, aes(time, ymin = m, ymax = p)) +
+  geom_errorbar(data = summary_grouped, aes(time, ymin = m, ymax = p), width = 2.0) +
   geom_point(data = summary_grouped, aes(time, mean)) +
   xlab("Game time") +
   ylab("Shooting percentage") +

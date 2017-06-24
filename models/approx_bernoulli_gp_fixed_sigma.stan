@@ -36,6 +36,16 @@ data {
   real sigma;
 }
 
+transformed data {
+  int P = 100;
+  real xp[P];
+  real minx = min(x);
+  real maxx = max(x);
+  
+  for(p in 1:P)
+    xp[p] = (maxx - minx) * (p - 1.0) / (P - 1.0) + minx;
+}
+
 parameters {
   vector[M] z;
   real<lower = 0.0> l;
@@ -52,12 +62,12 @@ model {
   y ~ bernoulli(f);
 }
 
-#generated quantities {
-#  real error = -20;
+generated quantities {
+  real log10error;
   
-#  {
-#    matrix[N, M] L = approx_L(M, scale, x, sigma, l);
+  {
+    matrix[P, M] L = approx_L(M, scale, xp, sigma, l);
     
-#    error = log10(max(fabs(cov_exp_quad(x, sigma, l) - L * L')));
-#  }
-#}
+    log10error = max(fabs(cov_exp_quad(xp, sigma, l) - L * L'));
+  }
+}
