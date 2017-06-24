@@ -40,7 +40,7 @@ data {
 
 parameters {
   vector[M] z;
-  real<lower = 1e-6> sigma;
+  real<lower = 0.0> sigma;
   real<lower = 0.0> l;
 }
 
@@ -49,7 +49,7 @@ transformed parameters {
 }
 
 model {
-  l ~ gamma(4, 4);
+  l ~ gamma(4.0, 4.0);
   z ~ normal(0, 1);
   sigma ~ normal(0, 1);
   
