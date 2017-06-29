@@ -48,8 +48,8 @@ out_grouped = inner_join(a %>% gather(period, f) %>% mutate(period = as.integer(
 
 summary_grouped = out_grouped %>% group_by(time) %>%
   summarize(mean = mean(f),
-            m = quantile(f, 0.125),
-            p = quantile(f, 0.875)) %>%
+            m = quantile(f, 0.025),
+            p = quantile(f, 0.975)) %>%
   ungroup()
 
 summary %>% ggplot(aes(time, mean)) +
