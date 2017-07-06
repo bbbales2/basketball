@@ -7,7 +7,7 @@ library(shinystan)
 
 setwd("~/basketball")
 
-df = read_csv('~/basketball/data/rw_nba.csv') %>% sample_n(100)
+df = read_csv('~/basketball/data/rw_nba.csv')# %>% sample_n(100)
 
 sdata = list(N = nrow(df),
              x = df$x + 0.5,
@@ -30,6 +30,8 @@ summary = out %>% group_by(time) %>%
             q3 = quantile(f, 0.833),
             q4 = quantile(f, 0.975)) %>%
   ungroup()
+
+#write_csv(summary, "westbrook_yuedong.csv")
 
 summary %>% ggplot(aes(time, mean)) +
   geom_ribbon(aes(ymin = q1, ymax = q2), alpha = 0.75, fill = "dodgerblue2") +
