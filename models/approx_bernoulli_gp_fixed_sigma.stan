@@ -49,6 +49,7 @@ transformed data {
 parameters {
   vector[M] z;
   real<lower = 0.0> l;
+  real noise;
 }
 
 transformed parameters {
@@ -58,8 +59,9 @@ transformed parameters {
 model {
   l ~ gamma(4, 4);
   z ~ normal(0, 1);
+  noise ~ normal(0.0, 1.0);
   
-  y ~ bernoulli(f);
+  y ~ bernoulli(to_array_1d(f + noise));
 }
 
 generated quantities {

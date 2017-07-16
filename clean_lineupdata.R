@@ -24,41 +24,85 @@ dft = csv %>% select(a1, a2, a3, a4, a5, h1, h2, h3, h4, h5, player, points, thr
 df3 = bind_rows(dft %>% rename(p1 = a1, p2 = a2, p3 = a3, p4 = a4, p5 = a5, pts = points) %>% filter(away == 1),
           dft %>% rename(p1 = h1, p2 = h2, p3 = h3, p4 = h4, p5 = h5, pts = points) %>% filter(home == 1)) %>%
     mutate_at(vars(p1, p2, p3, p4, p5), funs(str_replace_all(., "[^[:alnum:]]", ""))) %>%
-    select(team, three, pts, p1, p2, p3, p4, p5) %>% filter(team == "POR") %>%
-    filter(three == TRUE) %>% select(-team, -three)
-
-players = df3 %>% gather(pos, name, c(p1, p2, p3, p4)) %>% pull(name) %>% unique()
-
-detectors = map(players, function(x) { quo(str_detect(lineup, !!x)) }) %>% setNames(players)
-
-df4 = df3 %>% mutate(lineup = pmap(list(p1, p2, p3, p4, p5), c)) %>%
-  mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
-  select(-p1, -p2, -p3, -p4, -p5, -lineup) %>%
+    mutate(lineup = pmap(list(p1, p2, p3, p4, p5), c)) %>%
+  filter(team == "BOS") %>% filter(three == TRUE) %>% 
   mutate(scored = as.numeric(pts > 0)) %>%
-  select(-pts) %>%
-  select(scored, everything())
+  select(-pts) %>% select(scored, lineup) %>%
+  mutate(lineup_str = as.character(map(lineup, function(x) { paste(x, collapse = "\n") }))) %>%
+  group_by(lineup_str) %>%
+  summarize(lineup = lineup[1],
+            n = n(),
+            made = sum(scored))
 
-formula = as.formula(paste("scored ~ (", paste(players, collapse = " + "), ")^2"))
+players = df3 %>% pull(lineup) %>% reduce(union)
 
-fit = stan_glm(formula, data = df4,
-         family = binomial(link = "logit"),
-         prior = normal(location = 0, 0.1), prior_intercept = normal(location = 0, 0.5),
-         cores = 1, chains = 1, iter = 2000)
+df4 = df3 %>%
+  mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
+  select(-lineup) %>%
+  select(made, everything())
 
-as.tibble(fit) %>%
+formula = as.formula(paste(" ~ -1 + (", paste(players, collapse = " + "), ")^2"))
+
+X = model.matrix(formula, df4)
+
+fit = stan("models/player_effect_binomial.stan",
+           data = list(N = nrow(X),
+                       Ns = df4 %>% pull(n),
+                       M = ncol(X),
+                       X = X,
+                       y = df4 %>% pull(made)),
+           cores = 1,
+           chains = 1,
+           iter = 1000)
+
+#launch_shinystan(fit)
+#fit = stan_glm(formula, data = df4,
+#         family = binomial(link = "logit"),
+#         prior = normal(location = 0, 0.1), prior_intercept = normal(location = 0, 0.5),
+#         cores = 1, chains = 1, iter = 400)
+fitdf = bind_cols(as.tibble(extract(fit, "beta")$beta) %>% setNames(colnames(X)),
+  as.tibble(extract(fit, "alpha")$alpha) %>% setNames("intercept"))
+
+fitdf %>%
   gather(name, effect) %>%
   group_by(name) %>%
   summarize(m = mean(effect),
             sd = sd(effect),
             u = quantile(effect, 0.975),
-            l = quantile(effect, .025)) %>%
+            l = quantile(effect, .025),
+            psum = sum(effect * (effect > 0.0))) %>%
   ungroup() %>%
-  arrange(desc(m)) %>%
+  mutate(iso = str_detect(name, ":")) %>%
+  arrange(desc(psum)) %>%
   mutate(name = factor(name, levels = unique(name))) %>%
-  ggplot(aes(name, m)) +
+  ggplot(aes(name, m, colour = iso)) +
   geom_point() + 
   geom_linerange(aes(ymin = l, ymax = u)) +
   theme(axis.text.x  = element_text(angle=90, vjust=0.5))
+
+left_join(df3 %>% filter(n > 20), as.tibble(extract(fit, "p")$p) %>%
+            setNames(df3 %>% pull(lineup_str)) %>%
+            gather(lineup_str, p)) %>%
+  ggplot(aes(made / n)) +
+  geom_histogram(aes(p)) +
+  geom_vline(aes(xintercept = made / n), col = "red") +
+  facet_grid(lineup_str ~ .)
+
+df5 = as.tibble(extract(fit, "p")$p) %>% gather(g, p) %>% group_by(g) %>%
+  summarize(pm = mean(p),
+            pu = quantile(p, 0.975),
+            pl = quantile(p, 0.025)) %>% ungroup()
+
+dfcheck = bind_cols(df5, df3 %>% mutate(m = made / n,
+                         sd = sqrt(m * (1 - m) / n)))
+ 
+dfcheck %>%
+  ggplot(aes(lineup_str, m)) +
+  geom_linerange(aes(ymin = pl, ymax = pu)) +
+  geom_point(aes(lineup_str, pm)) +
+  geom_point(col = "red") +
+  #geom_linerange(aes(ymax = m + 2 * sd, ymin = m - 2 * sd), col = "red") +
+  theme(axis.text.x  = element_text(angle=15, vjust=0.5))
 
 glm(formula, family = binomial(), data = df4)
 
