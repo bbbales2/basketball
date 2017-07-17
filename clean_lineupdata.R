@@ -25,7 +25,7 @@ df3 = bind_rows(dft %>% rename(p1 = a1, p2 = a2, p3 = a3, p4 = a4, p5 = a5, pts 
           dft %>% rename(p1 = h1, p2 = h2, p3 = h3, p4 = h4, p5 = h5, pts = points) %>% filter(home == 1)) %>%
     mutate_at(vars(p1, p2, p3, p4, p5), funs(str_replace_all(., "[^[:alnum:]]", ""))) %>%
     mutate(lineup = pmap(list(p1, p2, p3, p4, p5), c)) %>%
-  filter(team == "BOS") %>% filter(three == TRUE) %>% 
+  filter(team == "GSW") %>% filter(three == TRUE) %>% 
   mutate(scored = as.numeric(pts > 0)) %>%
   select(-pts) %>% select(scored, lineup) %>%
   mutate(lineup_str = as.character(map(lineup, function(x) { paste(x, collapse = "\n") }))) %>%
@@ -72,19 +72,19 @@ fitdf %>%
             l = quantile(effect, .025),
             psum = sum(effect * (effect > 0.0))) %>%
   ungroup() %>%
-  mutate(iso = str_detect(name, ":")) %>%
-  arrange(desc(psum)) %>%
+  mutate(iso = factor(str_detect(name, ":") + 2 * str_detect(name, "intercept"))) %>%
+  arrange(desc(m)) %>%
   mutate(name = factor(name, levels = unique(name))) %>%
   ggplot(aes(name, m, colour = iso)) +
   geom_point() + 
   geom_linerange(aes(ymin = l, ymax = u)) +
   theme(axis.text.x  = element_text(angle=90, vjust=0.5))
 
-left_join(df3 %>% filter(n > 20), as.tibble(extract(fit, "p")$p) %>%
+left_join(df3 %>% filter(n > 20), as.tibble(extract(fit, "made")$made) %>%
             setNames(df3 %>% pull(lineup_str)) %>%
-            gather(lineup_str, p)) %>%
+            gather(lineup_str, pmade)) %>%
   ggplot(aes(made / n)) +
-  geom_histogram(aes(p)) +
+  geom_histogram(aes(pmade / n), bins = 15) +
   geom_vline(aes(xintercept = made / n), col = "red") +
   facet_grid(lineup_str ~ .)
 
