@@ -5,7 +5,7 @@ library(shinystan)
 
 setwd("~/basketball")
 
-df = read_csv('data/rw_nba.csv')# %>% sample_n(1000)
+df = read_csv('data/rw_nba.csv') %>% sample_n(1000)
 
 sdata = list(N = nrow(df),
              M = 20,

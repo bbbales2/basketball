@@ -7,7 +7,6 @@ data {
 }
 
 parameters {
-  real gamma;
   real<lower = 0.0> alpha_tau;
   real<lower = 0.0> beta_tau;
   vector[N] alpha;
@@ -21,11 +20,10 @@ parameters {
 }*/
 
 model {
-  gamma ~ normal(0.0, 0.05);
   alpha_tau ~ cauchy(0.0, 1.0);
   beta_tau ~ cauchy(0.0, 1.0);
   beta ~ normal(0.0, beta_tau);
-  alpha ~ normal(X * beta + gamma, alpha_tau);
+  alpha ~ normal(X * beta, alpha_tau);
   
   y ~ binomial_logit(Ns, alpha + logit(0.36));
 }
