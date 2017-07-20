@@ -10,7 +10,7 @@ setwd("~/basketball")
 
 df = readRDS("data/cleaned_lineup.Rdata")
 
-df3 = df %>% filter(three == TRUE) %>% filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
+df3 = df %>% filter(three == FALSE) %>% filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
   mutate(scored = as.numeric(pts > 0)) %>%
   select(team, scored, lineup, lineup_str) %>%
   group_by(lineup_str) %>%

@@ -4,6 +4,7 @@ library(rstan)
 library(lubridate)
 library(stringr)
 library(purrr)
+library(Matrix)
 options(mc.cores = parallel::detectCores())
 
 setwd("~/basketball")
@@ -26,18 +27,19 @@ df4 = df3 %>%
   select(-lineup) %>%
   select(made, everything()) %>% arrange(desc(n))
 
-formula = as.formula(paste(" ~ -1 + (", paste(players, collapse = " + "), ")^2"))
+formula = as.formula(paste(" ~ -1 + (", paste(players, collapse = " + "), ")"))
 
 X = model.matrix(formula, df4)
 
-fit = stan("models/player_effect_binomial.stan",
+fit = stan("models/player_effect_binomial_sparse.stan",
            data = list(N = nrow(X),
                        Ns = df4 %>% pull(n),
                        M = ncol(X),
                        X = X,
+                       NZ = nnzero(X),
                        y = df4 %>% pull(made)),
-           cores = 4,
-           chains = 4,
+           cores = 1,
+           chains = 1,
            iter = 1000)
 
 #launch_shinystan(fit)
