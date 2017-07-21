@@ -1,3 +1,4 @@
+library(Matrix)
 library(tidyverse)
 library(ggplot2)
 library(rstan)
@@ -10,33 +11,56 @@ setwd("~/basketball")
 
 df = readRDS("data/cleaned_lineup.Rdata")
 
-df3 = df %>% filter(three == FALSE) %>% filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
+df3 = df %>%
+  #filter(three == FALSE) %>%
+  filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
   mutate(scored = as.numeric(pts > 0)) %>%
   select(team, scored, lineup, lineup_str) %>%
   group_by(lineup_str) %>%
   summarize(team = team[1],
             lineup = lineup[1],
             n = n(),
-            made = sum(scored))
+            made = sum(scored)) %>% 
+  ungroup() %>%
+  arrange(desc(n))
 
 players = df3 %>% pull(lineup) %>% reduce(union)
 
 teams = df3 %>% pull(team) %>% unique()
 
 df4 = df3 %>%
-  mutate(lineupf = map(lineup, function(x) { factor(x, levels = players, exclude = -1) })) %>%
-  mutate(teamf = factor(team, levels = teams))
+  mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
+  select(made, everything())
 
-fit = stan("models/player_effect_binomial_factor.stan",
-           data = list(N = nrow(df4),
+formula = as.formula(paste(" ~ -1 + team + (", paste(players, collapse = " + "), ")"))
+
+X = model.matrix(formula, df4)
+
+fit = stan("models/team_effect_binomial_sparse.stan",
+           data = list(N = nrow(X),
                        Ns = df4 %>% pull(n),
-                       F = 5,
-                       lineup = map(df4 %>% pull(lineupf), as.integer),
-                       team = df4 %>% pull(teamf) %>% as.integer,
+                       M = ncol(X),
+                       T = length(teams),
+                       X = X,
+                       NZ = nnzero(X),
                        y = df4 %>% pull(made)),
-           cores = 4,
-           chains = 4,
-           iter = 2000)
+           cores = 1,
+           chains = 1,
+           iter = 1000)
+# df4 = df3 %>%
+#   mutate(lineupf = map(lineup, function(x) { factor(x, levels = players, exclude = -1) })) %>%
+#   mutate(teamf = factor(team, levels = teams))
+# 
+# fit = stan("models/player_effect_binomial_factor.stan",
+#            data = list(N = nrow(df4),
+#                        Ns = df4 %>% pull(n),
+#                        F = 5,
+#                        lineup = map(df4 %>% pull(lineupf), as.integer),
+#                        team = df4 %>% pull(teamf) %>% as.integer,
+#                        y = df4 %>% pull(made)),
+#            cores = 4,
+#            chains = 4,
+#            iter = 2000)
 
 #launch_shinystan(fit)
 #fit = stan_glm(formula, data = df4,
@@ -65,6 +89,7 @@ fitdf %>%
             q4 = quantile(effect, 0.975),
             psum = sum(effect * (effect > 0.0))) %>%
   ungroup() %>%
+  filter(q4 - q1 < 1.0) %>%
   arrange(desc(m)) %>%
   mutate(name = factor(name, levels = unique(name))) %>%
   ggplot(aes(name, m)) + 
@@ -74,7 +99,7 @@ fitdf %>%
   geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
   geom_point(aes(colour = team, shape = type), size = 4) + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-  ggtitle("95% intervals in blue, 67% in black, median is point")
+  ggtitle("95% intervals in blue, 67% in black, median is point")# + ylim(-0.5, 0.5)
 
 left_join(df3, as_tibble(extract(fit, "p")$p) %>%
             setNames(df3$lineup_str) %>%
@@ -83,11 +108,13 @@ left_join(df3, as_tibble(extract(fit, "p")$p) %>%
   ungroup() %>% ggplot(aes(m)) +
   geom_histogram()
 
-left_join(df3 %>% filter(n > 20), as.tibble(extract(fit, "made")$made) %>%
+left_join(df3 %>%
+            group_by(team) %>%
+            top_n(2, n), as.tibble(extract(fit, "made")$made) %>%
             setNames(df3 %>% pull(lineup_str)) %>%
             gather(lineup_str, pmade)) %>%
   ggplot(aes(made / n)) +
-  geom_histogram(aes(pmade / n), bins = 15) +
+  geom_histogram(aes(pmade / n, fill = team), bins = 15) +
   geom_vline(aes(xintercept = made / n), col = "red") +
   facet_grid(lineup_str ~ .)
 
