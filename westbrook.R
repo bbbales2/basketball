@@ -5,16 +5,15 @@ library(shinystan)
 
 setwd("~/basketball")
 
-df = read_csv('data/rw_nba.csv') %>% sample_n(1000)
+df = read_csv('data/rw_nba.csv')# %>% sample_n(1000)
 
 sdata = list(N = nrow(df),
-             M = 20,
-             scale = 0.20,
+             M = 10,
+             scale = 0.2,
              x = df$x,
-             y = df$result,
-             sigma = 1.0)
+             y = df$result)
 
-fit = stan('models/approx_bernoulli_gp_fixed_sigma.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
+fit = stan('models/approx_bernoulli_gp.stan', data = sdata, chains = 4, cores = 4, iter = 2000)
 
 extract(fit, c("l", "log10error")) %>% as_tibble %>% gather(param, value, c("l", "log10error")) %>%
   ggplot(aes(value)) +
@@ -51,8 +50,6 @@ summary_grouped = out_grouped %>% group_by(time) %>%
             m = quantile(f, 0.025),
             p = quantile(f, 0.975)) %>%
   ungroup()
-
-#write_csv(summary, "westbrook.csv")
 
 summary %>% ggplot(aes(time, mean)) +
   geom_ribbon(aes(ymin = q1, ymax = q2), alpha = 0.75, fill = "dodgerblue2") +
