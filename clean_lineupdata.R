@@ -17,7 +17,16 @@ csv = csv1 %>% filter(event_type == "shot" | event_type == "miss") %>%
   mutate(three = str_detect(description, "3PT"))# | event_type == "free throw"
 # %>% sample_n(10000)
 
-dft = csv %>% select(a1, a2, a3, a4, a5, h1, h2, h3, h4, h5, player, points, three, team) %>% rename(pts = points) %>%
+csv  %>%
+  select(team, dteam)
+
+dft = csv %>% left_join(csv %>%
+                        select(game_id, team) %>%
+                        group_by(game_id, team) %>%
+                        unique %>%
+                        group_by(game_id) %>%
+                        mutate(dteam = rev(team)), by = c("game_id", "team")) %>%
+  select(a1, a2, a3, a4, a5, h1, h2, h3, h4, h5, player, points, three, team, dteam) %>% rename(pts = points) %>%
   mutate(away = (a1 == player) + (a2 == player) + (a3 == player) + (a4 == player) + (a5 == player)) %>%
   mutate(home = (h1 == player) + (h2 == player) + (h3 == player) + (h4 == player) + (h5 == player))
 
