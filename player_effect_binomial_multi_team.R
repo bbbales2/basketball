@@ -95,9 +95,9 @@ results %>% map(function(df) df %>%
      geom_linerange(aes(ymin = q1, ymax = q2), col = "dodgerblue4") +
      geom_errorbar(aes(ymin = q2, ymax = q3)) +
      geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
-     geom_point(aes(colour = team), size = 4) + 
+     geom_point(size = 2) + 
      theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-     ggtitle("95% intervals in blue, 67% in black, median is point") +
+     ggtitle(paste(.$team, "95% intervals in blue, 67% in black, median is point")) +
      facet_grid(which ~ pts)) %>%
   pmap(function(team, plot) {
     ggsave(paste("offense/", team, ".png", sep = ""), plot = plot)
