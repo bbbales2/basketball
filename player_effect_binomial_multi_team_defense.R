@@ -14,7 +14,7 @@ setwd("~/basketball")
 df = readRDS("data/cleaned_lineup.Rdata")
 
 three = TRUE
-which = "defense"
+which = "offense"
 lineup_quo = if(which == "offense") quo(lineup) else quo(dlineup)
 lineup_str_quo = if(which == "offense") quo(lineup_str) else quo(dlineup_str)
 team_quo = if(which == "offense") quo(team) else quo(dteam)
@@ -40,7 +40,14 @@ df4 = df3 %>%
   mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
   select(made, everything())
 
-formula = as.formula(paste(" ~ -1 + team + (", paste(players, collapse = " + "), ")"))
+formula = as.formula(df3 %>%
+                      group_by(team) %>%
+                      select(lineup) %>%
+                      summarize(players = list(reduce(lineup, union))) %>%
+                      mutate(formula = paste("(", paste(!!players, collapse = " + "), ")^2")) %>%
+                      pull(formula) %>%
+                      paste(., collapse = " + ") %>%
+                      paste("~ -1 + team + ", .))
 
 X = model.matrix(formula, df4)
 
@@ -57,7 +64,7 @@ fit = stan("models/team_effect_binomial_sparse_centered.stan",
            iter = 1000)
 
 fitdf = bind_rows(as.tibble(extract(fit, "beta")$beta) %>%
-                    setNames(players) %>%
+                    setNames(colnames(X)[-(1:2)]) %>%
                     gather(name, effect) %>%
                     left_join(df4 %>% group_by(team) %>% summarize(name = list(reduce(lineup, union))) %>% unnest()) %>%
                     mutate(type = "player"))#,
@@ -89,7 +96,6 @@ fitdf %>%
   geom_point(aes(colour = team, shape = type), size = 4) + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
   ggtitle("95% intervals in blue, 67% in black, median is point")
-
 
 
 fitdf %>%
@@ -124,7 +130,7 @@ left_join(df3, as_tibble(extract(fit, "p")$p) %>%
 
 left_join(df3 %>%
             group_by(team) %>%
-            top_n(2, n), as.tibble(extract(fit, "made")$made) %>%
+            top_n(10, n), as.tibble(extract(fit, "made")$made) %>%
             setNames(df3 %>% pull(lineup_str)) %>%
             gather(lineup_str, pmade)) %>%
   ggplot(aes(made / n)) +

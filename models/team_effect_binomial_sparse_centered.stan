@@ -33,8 +33,8 @@ transformed parameters {
 }
 
 model {
-  gamma_tau ~ normal(0.0, 1.0);
-  beta_tau ~ normal(0.0, 1.0);
+  gamma_tau ~ normal(0.0, 0.05);
+  beta_tau ~ normal(0.0, 0.05);
   beta ~ normal(0.0, beta_tau);
   gamma ~ normal(0.0, gamma_tau);
   
