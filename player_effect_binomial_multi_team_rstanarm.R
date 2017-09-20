@@ -18,7 +18,8 @@ lineup_str_quo = if(which == "offense") quo(lineup_str) else quo(dlineup_str)
 team_quo = if(which == "offense") quo(team) else quo(dteam)
 df3 = df %>%
   filter((!!team_quo) %in% c('CLE', 'GSW')) %>%#, 'LAC'
-  mutate(scored = as.numeric(pts == 3)) %>%
+  filter(three == TRUE) %>%
+  mutate(scored = as.numeric(pts > 0)) %>%
   select(!!team_quo, scored, !!lineup_quo, !!lineup_str_quo) %>%
   rename(team = !!team_quo, lineup = !!lineup_quo, lineup_str = !!lineup_str_quo) %>%
   group_by(lineup_str) %>%
@@ -37,10 +38,10 @@ df4 = df3 %>%
   mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
   select(made, everything())
 
-formula = as.formula(paste("made/n ~ (", paste(players, collapse = " + "), ")"))
+formula = as.formula(paste("cbind(made, n - made) ~ (", paste(players, collapse = " + "), ")"))
 
 prior = normal(location = 0, scale = 1.0)
-fit = stan_glm(formula, data = df4,
+fit = stan_glmer(formula, data = df4,
                 family = binomial(link = "logit"), 
                 prior = prior, prior_intercept = prior,  
                 chains = 2, cores = 2, iter = 1000)

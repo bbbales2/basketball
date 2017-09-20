@@ -13,11 +13,17 @@ setwd("~/basketball")
 
 df = readRDS("data/cleaned_lineup.Rdata")
 
+three = TRUE
+which = "defense"
+lineup_quo = if(which == "offense") quo(lineup) else quo(dlineup)
+lineup_str_quo = if(which == "offense") quo(lineup_str) else quo(dlineup_str)
+team_quo = if(which == "offense") quo(team) else quo(dteam)
 df3 = df %>%
-  #filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
+  filter((!!team_quo) %in% c('GSW', 'HOU')) %>%#, 'LAC'
+  filter(three == three) %>%
   mutate(scored = as.numeric(pts > 0)) %>%
-  select(team, scored, dlineup, dlineup_str) %>%
-  rename(lineup = dlineup, lineup_str = dlineup_str) %>%
+  select(!!team_quo, scored, !!lineup_quo, !!lineup_str_quo) %>%
+  rename(team = !!team_quo, lineup = !!lineup_quo, lineup_str = !!lineup_str_quo) %>%
   group_by(lineup_str) %>%
   summarize(team = team[1],
             lineup = lineup[1],
@@ -61,7 +67,7 @@ fitdf = bind_rows(as.tibble(extract(fit, "beta")$beta) %>%
 #  mutate(team = name,
 #         type = "team"))
 
-plots = fitdf %>%
+fitdf %>%
   group_by(name) %>%
   summarize(team = team[1],
             type = type[1],
@@ -75,14 +81,14 @@ plots = fitdf %>%
   arrange(desc(m)) %>%
   mutate(name = factor(name, levels = unique(name))) %>%
   group_by(team) %>%
-  do(plot = ggplot(data = ., aes(name, m)) + 
-       geom_hline(aes(yintercept = 0.0), linetype = "dashed", col = "orangered") +
-       geom_linerange(aes(ymin = q1, ymax = q2), col = "dodgerblue4") +
-       geom_errorbar(aes(ymin = q2, ymax = q3)) +
-       geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
-       geom_point(aes(colour = team, shape = type), size = 4) + 
-       theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-       ggtitle("95% intervals in blue, 67% in black, median is point"))
+  ggplot(aes(name, m)) + 
+  geom_hline(aes(yintercept = 0.0), linetype = "dashed", col = "orangered") +
+  geom_linerange(aes(ymin = q1, ymax = q2), col = "dodgerblue4") +
+  geom_errorbar(aes(ymin = q2, ymax = q3)) +
+  geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
+  geom_point(aes(colour = team, shape = type), size = 4) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  ggtitle("95% intervals in blue, 67% in black, median is point")
 
 
 

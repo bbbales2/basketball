@@ -1,10 +1,10 @@
 library(Matrix)
 library(tidyverse)
 library(ggplot2)
-library(rstan)
 library(lubridate)
 library(stringr)
 library(purrr)
+library(rstan)
 library(shinystan)
 library(gridExtra)
 options(mc.cores = parallel::detectCores())
@@ -13,14 +13,15 @@ setwd("~/basketball")
 
 df = readRDS("data/cleaned_lineup.Rdata")
 
-results = list(pts = c(2, 3, 2, 3),
+results = list(three = c(FALSE, TRUE, FALSE, TRUE),
      which = c("offense", "offense", "defense", "defense")) %>%
-  pmap(function(pts, which) {
+  pmap(function(three, which) {
     lineup_quo = if(which == "offense") quo(lineup) else quo(dlineup)
     lineup_str_quo = if(which == "offense") quo(lineup_str) else quo(dlineup_str)
     team_quo = if(which == "offense") quo(team) else quo(dteam)
     df3 = df %>%
-      #filter((!!team_quo) %in% c('CLE', 'GSW')) %>%#, 'LAC'
+      filter((!!team_quo) %in% c('GSW', 'CLE')) %>%#, 'LAC'
+      filter(three == three) %>%
       mutate(scored = as.numeric(pts > 0)) %>%
       select(!!team_quo, scored, !!lineup_quo, !!lineup_str_quo) %>%
       rename(team = !!team_quo, lineup = !!lineup_quo, lineup_str = !!lineup_str_quo) %>%
@@ -41,7 +42,6 @@ results = list(pts = c(2, 3, 2, 3),
       select(made, everything())
     
     formula = as.formula(paste(" ~ -1 + team + (", paste(players, collapse = " + "), ")"))
-    
     X = model.matrix(formula, df4)
 
     fit = stan("models/team_effect_binomial_sparse_centered.stan",
@@ -60,7 +60,7 @@ results = list(pts = c(2, 3, 2, 3),
       setNames(players) %>%
       gather(name, effect) %>%
       left_join(df4 %>% group_by(team) %>% summarize(name = list(reduce(lineup, union))) %>% unnest()) %>%
-      mutate(pts = pts, which = which)
+      mutate(three = three, which = which)
   })
 
 fitdf = bind_rows(as.tibble(extract(fit, "beta")$beta) %>%
@@ -77,7 +77,7 @@ fitdf = bind_rows(as.tibble(extract(fit, "beta")$beta) %>%
 results %>% map(function(df) df %>%
   group_by(name) %>%
   summarize(team = team[1],
-            pts = pts[1],
+            pts = if(three) 3 else 2,
             which = which[1],
             m = median(effect),
             q1 = quantile(effect, 0.025),
@@ -106,7 +106,7 @@ results %>% map(function(df) df %>%
 results %>% map(function(df) df %>%
                         group_by(name) %>%
                         summarize(team = team[1],
-                                  pts = pts[1],
+                                  pts = if(three) 3 else 2,
                                   which = which[1],
                                   m = median(effect),
                                   q1 = quantile(effect, 0.025),
