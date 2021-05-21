@@ -1,82 +1,124 @@
 library(Matrix)
 library(tidyverse)
 library(ggplot2)
-library(rstan)
 library(lubridate)
 library(stringr)
 library(purrr)
+library(rstan)
+library(shinystan)
+library(gridExtra)
 options(mc.cores = parallel::detectCores())
 
 setwd("~/basketball")
 
 df = readRDS("data/cleaned_lineup.Rdata")
 
-df3 = df %>%
-  #filter(three == FALSE) %>%
-  filter(team %in% c('CLE', 'GSW', 'LAC')) %>%#sample_n(10000) %>% 
-  mutate(scored = as.numeric(pts > 0)) %>%
-  select(team, scored, lineup, lineup_str) %>%
-  group_by(lineup_str) %>%
-  summarize(team = team[1],
-            lineup = lineup[1],
-            n = n(),
-            made = sum(scored)) %>% 
-  ungroup() %>%
-  arrange(desc(n))
+results = list(three = c(FALSE, TRUE, FALSE, TRUE),
+     which = c("offense", "offense", "defense", "defense")) %>%
+  pmap(function(three, which) {
+    lineup_quo = if(which == "offense") quo(lineup) else quo(dlineup)
+    lineup_str_quo = if(which == "offense") quo(lineup_str) else quo(dlineup_str)
+    team_quo = if(which == "offense") quo(team) else quo(dteam)
+    df3 = df %>%
+      filter((!!team_quo) %in% c('GSW', 'CLE')) %>%#, 'LAC'
+      filter(three == three) %>%
+      mutate(scored = as.numeric(pts > 0)) %>%
+      select(!!team_quo, scored, !!lineup_quo, !!lineup_str_quo) %>%
+      rename(team = !!team_quo, lineup = !!lineup_quo, lineup_str = !!lineup_str_quo) %>%
+      group_by(lineup_str) %>%
+      summarize(team = team[1],
+                lineup = lineup[1],
+                n = n(),
+                made = sum(scored)) %>% 
+      ungroup() %>%
+      arrange(desc(n))
+    
+    players = df3 %>% pull(lineup) %>% reduce(union)
+    
+    teams = df3 %>% pull(team) %>% unique()
+    
+    df4 = df3 %>%
+      mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
+      select(made, everything())
+    
+    formula = as.formula(paste(" ~ -1 + team + (", paste(players, collapse = " + "), ")"))
+    X = model.matrix(formula, df4)
 
-players = df3 %>% pull(lineup) %>% reduce(union)
+    fit = stan("models/team_effect_binomial_sparse_centered.stan",
+               data = list(N = nrow(X),
+                           Ns = df4 %>% pull(n),
+                           M = ncol(X),
+                           T = length(teams),
+                           X = X,
+                           NZ = nnzero(X),
+                           y = df4 %>% pull(made)),
+               cores = 4,
+               chains = 4,
+               iter = 2000)
+    
+    as.tibble(extract(fit, "beta")$beta) %>%
+      setNames(players) %>%
+      gather(name, effect) %>%
+      left_join(df4 %>% group_by(team) %>% summarize(name = list(reduce(lineup, union))) %>% unnest()) %>%
+      mutate(three = three, which = which)
+  })
 
-teams = df3 %>% pull(team) %>% unique()
-
-df4 = df3 %>%
-  mutate(!!!map(players, function(x) { quo(as.numeric(str_detect(lineup, !!x))) }) %>% setNames(players)) %>%
-  select(made, everything())
-
-formula = as.formula(paste(" ~ -1 + team + (", paste(players, collapse = " + "), ")"))
-
-X = model.matrix(formula, df4)
-
-fit = stan("models/team_effect_binomial_sparse.stan",
-           data = list(N = nrow(X),
-                       Ns = df4 %>% pull(n),
-                       M = ncol(X),
-                       T = length(teams),
-                       X = X,
-                       NZ = nnzero(X),
-                       y = df4 %>% pull(made)),
-           cores = 1,
-           chains = 1,
-           iter = 1000)
-# df4 = df3 %>%
-#   mutate(lineupf = map(lineup, function(x) { factor(x, levels = players, exclude = -1) })) %>%
-#   mutate(teamf = factor(team, levels = teams))
-# 
-# fit = stan("models/player_effect_binomial_factor.stan",
-#            data = list(N = nrow(df4),
-#                        Ns = df4 %>% pull(n),
-#                        F = 5,
-#                        lineup = map(df4 %>% pull(lineupf), as.integer),
-#                        team = df4 %>% pull(teamf) %>% as.integer,
-#                        y = df4 %>% pull(made)),
-#            cores = 4,
-#            chains = 4,
-#            iter = 2000)
-
-#launch_shinystan(fit)
-#fit = stan_glm(formula, data = df4,
-#         family = binomial(link = "logit"),
-#         prior = normal(location = 0, 0.1), prior_intercept = normal(location = 0, 0.5),
-#         cores = 1, chains = 1, iter = 400)
 fitdf = bind_rows(as.tibble(extract(fit, "beta")$beta) %>%
-                    setNames(players) %>%
-                    gather(name, effect) %>%
-                    left_join(df4 %>% group_by(team) %>% summarize(name = list(reduce(lineup, union))) %>% unnest()) %>%
-                    mutate(type = "player"),
-                  as.tibble(extract(fit, "gamma")$gamma) %>%
-                    setNames(teams) %>%
-                    gather(name, effect) %>%
-                    mutate(team = name,
-                           type = "team"))
+                  setNames(players) %>%
+                  gather(name, effect) %>%
+                  left_join(df4 %>% group_by(team) %>% summarize(name = list(reduce(lineup, union))) %>% unnest()) %>%
+                  mutate(type = "player"))#,
+                  #as.tibble(extract(fit, "gamma")$gamma) %>%
+                  #  setNames(teams) %>%
+                  #  gather(name, effect) %>%
+                  #  mutate(team = name,
+                  #         type = "team"))
+
+results %>% map(function(df) df %>%
+  group_by(name) %>%
+  summarize(team = team[1],
+            pts = if(three) 3 else 2,
+            which = which[1],
+            m = median(effect),
+            q1 = quantile(effect, 0.025),
+            q2 = quantile(effect, 0.1667),
+            q3 = quantile(effect, 0.6667),
+            q4 = quantile(effect, 0.975),
+            psum = sum(effect * (effect > 0.0))) %>%
+  ungroup()) %>% bind_rows %>%
+  arrange(desc(m)) %>%
+  mutate(name = factor(name, levels = unique(name)),
+         pts = factor(pts)) %>%
+  group_by(team) %>%
+  do(plot = ggplot(data = ., aes(name, m)) + 
+     geom_hline(aes(yintercept = 0.0), linetype = "dashed", col = "orangered") +
+     geom_linerange(aes(ymin = q1, ymax = q2), col = "dodgerblue4") +
+     geom_errorbar(aes(ymin = q2, ymax = q3)) +
+     geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
+     geom_point(size = 2) + 
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+     ggtitle(paste(.$team, "95% intervals in blue, 67% in black, median is point")) +
+     facet_grid(which ~ pts)) %>%
+  pmap(function(team, plot) {
+    ggsave(paste("offense/", team, ".png", sep = ""), plot = plot)
+  })
+
+results %>% map(function(df) df %>%
+                        group_by(name) %>%
+                        summarize(team = team[1],
+                                  pts = if(three) 3 else 2,
+                                  which = which[1],
+                                  m = median(effect),
+                                  q1 = quantile(effect, 0.025),
+                                  q2 = quantile(effect, 0.1667),
+                                  q3 = quantile(effect, 0.6667),
+                                  q4 = quantile(effect, 0.975),
+                                  psum = sum(effect * (effect > 0.0))) %>%
+                        ungroup()) %>% bind_rows %>%
+  arrange(desc(m)) %>%
+  mutate(name = factor(name, levels = unique(name)),
+         pts = factor(pts)) %>%
+  group_by(team) %>% filter(which == "defense", pts == 2) %>% print.data.frame
 
 fitdf %>%
   group_by(name) %>%
@@ -99,7 +141,7 @@ fitdf %>%
   geom_linerange(aes(ymin = q3, ymax = q4), col = "dodgerblue4") +
   geom_point(aes(colour = team, shape = type), size = 4) + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-  ggtitle("95% intervals in blue, 67% in black, median is point")# + ylim(-0.5, 0.5)
+  ggtitle("95% intervals in blue, 67% in black, median is point")
 
 left_join(df3, as_tibble(extract(fit, "p")$p) %>%
             setNames(df3$lineup_str) %>%
@@ -134,22 +176,3 @@ dfcheck %>%
   #geom_linerange(aes(ymax = m + 2 * sd, ymin = m - 2 * sd), col = "red") +
   theme(axis.text.x  = element_text(angle=15, vjust=0.5))
 
-glm(formula, family = binomial(), data = df4)
-
-# %>%
-#  select(name) %>% unique %>% arrange(team)
-
-dftt = bind_rows(dft %>% rename(p1 = a1, p2 = a2, p3 = a3, p4 = a4, p5 = a5, pts = points) %>%
-                   mutate(diff = (away == 1) * pts - (away == 0) * pts) %>% select(home, away, diff, p1, p2, p3, p4, p5),
-                 dft %>% rename(p1 = h1, p2 = h2, p3 = h3, p4 = h4, p5 = h5, pts = points) %>%
-                   mutate(diff = (away == 0) * pts - (away == 1) * pts) %>% select(home, away, diff, p1, p2, p3, p4, p5))
-
-#%>%
-select(p1, p2, p3, p4, p5, diff) %>%
-  mutate(rn = row_number()) %>%
-  gather(position, name, c(p1, p2, p3, p4, p5)) %>%
-  group_by(rn) %>%
-  summarize(lineup = paste(sort(name), collapse = ', ')) %>%
-  group_by(lineup) %>%
-  summarize(count = n()) %>%
-  arrange(desc(count))
